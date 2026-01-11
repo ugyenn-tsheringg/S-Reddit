@@ -5,6 +5,8 @@ import HomePage from './pages/HomePage'
 import PostPage from './pages/PostPage'
 import HubPage from './pages/HubPage'
 import CreatePostModal from './components/CreatePostModal'
+import AuthModal from './components/AuthModal'
+import { AuthProvider, useAuth } from './context/AuthContext'
 
 // Firebase imports
 import {
@@ -226,54 +228,70 @@ function App() {
     }
 
     return (
-        <AppContext.Provider value={contextValue}>
-            <div className="app">
-                <Header />
-                <main>
-                    {isLoading ? (
-                        <div style={{
-                            display: 'flex',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            minHeight: '50vh',
-                            flexDirection: 'column',
-                            gap: 'var(--space-md)'
-                        }}>
-                            <div className="skeleton" style={{ width: 48, height: 48, borderRadius: '50%' }}></div>
-                            <p style={{ color: 'var(--color-text-secondary)' }}>Loading S Reddit...</p>
-                        </div>
-                    ) : error ? (
-                        <div style={{
-                            display: 'flex',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            minHeight: '50vh',
-                            flexDirection: 'column',
-                            gap: 'var(--space-md)',
-                            textAlign: 'center',
-                            padding: 'var(--space-xl)'
-                        }}>
-                            <div style={{ fontSize: 48 }}>⚠️</div>
-                            <h2>Connection Error</h2>
-                            <p style={{ color: 'var(--color-text-secondary)' }}>{error}</p>
-                            <button
-                                className="btn btn-primary"
-                                onClick={() => window.location.reload()}
-                            >
-                                Retry
-                            </button>
-                        </div>
-                    ) : (
-                        <Routes>
-                            <Route path="/" element={<HomePage />} />
-                            <Route path="/post/:id" element={<PostPage />} />
-                            <Route path="/hub/:name" element={<HubPage />} />
-                        </Routes>
-                    )}
-                </main>
-                {isCreateModalOpen && <CreatePostModal />}
-            </div>
-        </AppContext.Provider>
+        <AuthProvider>
+            <AppContext.Provider value={contextValue}>
+                <AppContent
+                    isLoading={isLoading}
+                    error={error}
+                    isCreateModalOpen={isCreateModalOpen}
+                />
+            </AppContext.Provider>
+        </AuthProvider>
+    )
+}
+
+// AppContent component - needs to be inside AuthProvider to use useAuth
+function AppContent({ isLoading, error, isCreateModalOpen }) {
+    const { authModalOpen } = useAuth()
+
+    return (
+        <div className="app">
+            <Header />
+            <main>
+                {isLoading ? (
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        minHeight: '50vh',
+                        flexDirection: 'column',
+                        gap: 'var(--space-md)'
+                    }}>
+                        <div className="skeleton" style={{ width: 48, height: 48, borderRadius: '50%' }}></div>
+                        <p style={{ color: 'var(--color-text-secondary)' }}>Loading S Reddit...</p>
+                    </div>
+                ) : error ? (
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        minHeight: '50vh',
+                        flexDirection: 'column',
+                        gap: 'var(--space-md)',
+                        textAlign: 'center',
+                        padding: 'var(--space-xl)'
+                    }}>
+                        <div style={{ fontSize: 48 }}>⚠️</div>
+                        <h2>Connection Error</h2>
+                        <p style={{ color: 'var(--color-text-secondary)' }}>{error}</p>
+                        <button
+                            className="btn btn-primary"
+                            onClick={() => window.location.reload()}
+                        >
+                            Retry
+                        </button>
+                    </div>
+                ) : (
+                    <Routes>
+                        <Route path="/" element={<HomePage />} />
+                        <Route path="/post/:id" element={<PostPage />} />
+                        <Route path="/hub/:name" element={<HubPage />} />
+                    </Routes>
+                )}
+            </main>
+            {isCreateModalOpen && <CreatePostModal />}
+            {authModalOpen && <AuthModal />}
+        </div>
     )
 }
 

@@ -109,8 +109,9 @@ function Sidebar() {
                         </div>
                     </div>
                     <button
-                        className="btn btn-primary w-full mt-md"
+                        className="btn btn-primary btn-sm w-full mt-md"
                         onClick={openCreateModal}
+                        style={{ padding: 'var(--space-sm) var(--space-md)' }}
                     >
                         <PlusIcon />
                         Create Post

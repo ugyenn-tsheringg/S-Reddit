@@ -211,15 +211,33 @@ function Header() {
                                         </div>
 
                                         <div className="user-menu-items">
-                                            <button className="user-menu-item">
+                                            <button
+                                                className="user-menu-item"
+                                                onClick={() => {
+                                                    alert('Profile page coming soon!')
+                                                    setShowUserMenu(false)
+                                                }}
+                                            >
                                                 <UserIcon />
                                                 <span>Profile</span>
                                             </button>
-                                            <button className="user-menu-item">
+                                            <button
+                                                className="user-menu-item"
+                                                onClick={() => {
+                                                    alert('Saved posts page coming soon!')
+                                                    setShowUserMenu(false)
+                                                }}
+                                            >
                                                 <BookmarkIcon />
                                                 <span>Saved Posts</span>
                                             </button>
-                                            <button className="user-menu-item">
+                                            <button
+                                                className="user-menu-item"
+                                                onClick={() => {
+                                                    alert('Settings page coming soon!')
+                                                    setShowUserMenu(false)
+                                                }}
+                                            >
                                                 <SettingsIcon />
                                                 <span>Settings</span>
                                             </button>

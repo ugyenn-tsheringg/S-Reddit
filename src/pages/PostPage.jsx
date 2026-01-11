@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useApp } from '../App'
+import { useAuth } from '../context/AuthContext'
 import VoteWidget from '../components/VoteWidget'
 import Sidebar from '../components/Sidebar'
+import { getCommentsByPostId, createComment } from '../firebase/database'
 
 // SVG Icons
 const ArrowLeftIcon = () => (
@@ -70,53 +72,39 @@ const ReplyIcon = () => (
     </svg>
 )
 
-// Sample comments
-const sampleComments = [
-    {
-        id: 1,
-        author: 'ScholarMentor',
-        content: 'Great opportunity! I applied to this program last year and got accepted. The key is to have a strong research proposal.',
-        votes: 45,
-        userVote: 0,
-        createdAt: new Date(Date.now() - 60 * 60 * 1000),
-        replies: [
-            {
-                id: 11,
-                author: 'Anonymous',
-                content: 'Could you share more about your research proposal? I\'m struggling with mine.',
-                votes: 12,
-                userVote: 0,
-                createdAt: new Date(Date.now() - 30 * 60 * 1000),
-                replies: []
-            }
-        ]
-    },
-    {
-        id: 2,
-        author: 'Anonymous',
-        content: 'The deadline is coming up fast! Make sure you have all your documents ready.',
-        votes: 23,
-        userVote: 0,
-        createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-        replies: []
-    }
-]
+const CopyIcon = () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+)
 
-function Comment({ comment, depth = 0 }) {
+const CheckIcon = () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="20 6 9 17 4 12" />
+    </svg>
+)
+
+function Comment({ comment, depth = 0, postId, onReplyAdded }) {
     const [isReplying, setIsReplying] = useState(false)
     const [replyContent, setReplyContent] = useState('')
-    const [localVote, setLocalVote] = useState(comment.userVote)
-    const [votes, setVotes] = useState(comment.votes)
+    const [localVote, setLocalVote] = useState(comment.userVote || 0)
+    const [votes, setVotes] = useState(comment.votes || 0)
+    const [isSubmitting, setIsSubmitting] = useState(false)
+    const { currentUser, userProfile, openAuthModal } = useAuth()
 
     const formatTime = (date) => {
         const now = new Date()
-        const diffMs = now - new Date(date)
+        const commentDate = date?.toDate ? date.toDate() : new Date(date)
+        const diffMs = now - commentDate
         const diffMins = Math.floor(diffMs / 60000)
         const diffHours = Math.floor(diffMs / 3600000)
+        const diffDays = Math.floor(diffMs / 86400000)
 
         if (diffMins < 60) return `${diffMins}m ago`
         if (diffHours < 24) return `${diffHours}h ago`
-        return new Date(date).toLocaleDateString()
+        if (diffDays < 7) return `${diffDays}d ago`
+        return commentDate.toLocaleDateString()
     }
 
     const handleVote = (direction) => {
@@ -129,6 +117,34 @@ function Comment({ comment, depth = 0 }) {
         } else {
             setVotes(v => v + direction)
             setLocalVote(direction)
+        }
+    }
+
+    const handleReply = async () => {
+        if (!currentUser) {
+            openAuthModal('login')
+            return
+        }
+
+        if (!replyContent.trim()) return
+
+        setIsSubmitting(true)
+        try {
+            await createComment({
+                postId,
+                parentId: comment.id,
+                author: userProfile?.username || currentUser.displayName || 'Anonymous',
+                authorId: currentUser.uid,
+                content: replyContent.trim()
+            })
+            setReplyContent('')
+            setIsReplying(false)
+            if (onReplyAdded) onReplyAdded()
+        } catch (error) {
+            console.error('Error posting reply:', error)
+            alert('Failed to post reply. Please try again.')
+        } finally {
+            setIsSubmitting(false)
         }
     }
 
@@ -210,7 +226,13 @@ function Comment({ comment, depth = 0 }) {
                     <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
                         <button
                             className="post-action"
-                            onClick={() => setIsReplying(!isReplying)}
+                            onClick={() => {
+                                if (!currentUser) {
+                                    openAuthModal('login')
+                                    return
+                                }
+                                setIsReplying(!isReplying)
+                            }}
                         >
                             <ReplyIcon />
                             Reply
@@ -238,8 +260,12 @@ function Comment({ comment, depth = 0 }) {
                                 >
                                     Cancel
                                 </button>
-                                <button className="btn btn-primary btn-sm">
-                                    Reply
+                                <button
+                                    className="btn btn-primary btn-sm"
+                                    onClick={handleReply}
+                                    disabled={isSubmitting || !replyContent.trim()}
+                                >
+                                    {isSubmitting ? 'Posting...' : 'Reply'}
                                 </button>
                             </div>
                         </div>
@@ -247,7 +273,13 @@ function Comment({ comment, depth = 0 }) {
 
                     {/* Nested replies */}
                     {comment.replies?.map(reply => (
-                        <Comment key={reply.id} comment={reply} depth={depth + 1} />
+                        <Comment
+                            key={reply.id}
+                            comment={reply}
+                            depth={depth + 1}
+                            postId={postId}
+                            onReplyAdded={onReplyAdded}
+                        />
                     ))}
                 </div>
             </div>
@@ -258,10 +290,138 @@ function Comment({ comment, depth = 0 }) {
 function PostPage() {
     const { id } = useParams()
     const { posts, bookmarks, toggleBookmark } = useApp()
+    const { currentUser, userProfile, openAuthModal } = useAuth()
     const [commentContent, setCommentContent] = useState('')
+    const [comments, setComments] = useState([])
+    const [isLoadingComments, setIsLoadingComments] = useState(true)
+    const [isSubmitting, setIsSubmitting] = useState(false)
+    const [shareStatus, setShareStatus] = useState(null) // 'copied' or null
 
-    const post = posts.find(p => p.id === parseInt(id))
-    const isBookmarked = bookmarks.includes(post?.id)
+    // Find post - compare as string since Firebase uses string IDs
+    const post = posts.find(p => p.id === id || p.id === parseInt(id))
+    const isBookmarked = post ? bookmarks.includes(post.id) : false
+
+    // Load comments from Firebase
+    useEffect(() => {
+        const loadComments = async () => {
+            if (!id) return
+
+            setIsLoadingComments(true)
+            try {
+                const commentsData = await getCommentsByPostId(id)
+
+                // Organize comments into a tree structure
+                const commentMap = {}
+                const rootComments = []
+
+                commentsData.forEach(comment => {
+                    commentMap[comment.id] = { ...comment, replies: [] }
+                })
+
+                commentsData.forEach(comment => {
+                    if (comment.parentId && commentMap[comment.parentId]) {
+                        commentMap[comment.parentId].replies.push(commentMap[comment.id])
+                    } else if (!comment.parentId) {
+                        rootComments.push(commentMap[comment.id])
+                    }
+                })
+
+                setComments(rootComments)
+            } catch (error) {
+                console.error('Error loading comments:', error)
+            } finally {
+                setIsLoadingComments(false)
+            }
+        }
+
+        loadComments()
+    }, [id])
+
+    const handleSubmitComment = async () => {
+        if (!currentUser) {
+            openAuthModal('login')
+            return
+        }
+
+        if (!commentContent.trim()) return
+
+        setIsSubmitting(true)
+        try {
+            const newComment = await createComment({
+                postId: id,
+                parentId: null,
+                author: userProfile?.username || currentUser.displayName || 'Anonymous',
+                authorId: currentUser.uid,
+                content: commentContent.trim()
+            })
+
+            setComments(prev => [{ ...newComment, replies: [] }, ...prev])
+            setCommentContent('')
+        } catch (error) {
+            console.error('Error posting comment:', error)
+            alert('Failed to post comment. Please try again.')
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
+    const handleShare = async () => {
+        const url = window.location.href
+
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: post?.title || 'S Reddit Post',
+                    url: url
+                })
+            } catch (error) {
+                // User cancelled or error
+                if (error.name !== 'AbortError') {
+                    fallbackCopy(url)
+                }
+            }
+        } else {
+            fallbackCopy(url)
+        }
+    }
+
+    const fallbackCopy = async (url) => {
+        try {
+            await navigator.clipboard.writeText(url)
+            setShareStatus('copied')
+            setTimeout(() => setShareStatus(null), 2000)
+        } catch (error) {
+            // Fallback for older browsers
+            const textarea = document.createElement('textarea')
+            textarea.value = url
+            document.body.appendChild(textarea)
+            textarea.select()
+            document.execCommand('copy')
+            document.body.removeChild(textarea)
+            setShareStatus('copied')
+            setTimeout(() => setShareStatus(null), 2000)
+        }
+    }
+
+    const refreshComments = async () => {
+        const commentsData = await getCommentsByPostId(id)
+        const commentMap = {}
+        const rootComments = []
+
+        commentsData.forEach(comment => {
+            commentMap[comment.id] = { ...comment, replies: [] }
+        })
+
+        commentsData.forEach(comment => {
+            if (comment.parentId && commentMap[comment.parentId]) {
+                commentMap[comment.parentId].replies.push(commentMap[comment.id])
+            } else if (!comment.parentId) {
+                rootComments.push(commentMap[comment.id])
+            }
+        })
+
+        setComments(rootComments)
+    }
 
     if (!post) {
         return (
@@ -272,6 +432,9 @@ function PostPage() {
                     marginTop: 'var(--space-xl)'
                 }}>
                     <h2>Post not found</h2>
+                    <p style={{ color: 'var(--color-text-secondary)', marginTop: 'var(--space-sm)' }}>
+                        The post you're looking for doesn't exist or has been removed.
+                    </p>
                     <Link to="/" className="btn btn-primary" style={{ marginTop: 'var(--space-lg)' }}>
                         Back to Home
                     </Link>
@@ -281,7 +444,8 @@ function PostPage() {
     }
 
     const formatTime = (date) => {
-        return new Date(date).toLocaleDateString('en-US', {
+        const postDate = date?.toDate ? date.toDate() : new Date(date)
+        return postDate.toLocaleDateString('en-US', {
             month: 'long',
             day: 'numeric',
             year: 'numeric',
@@ -291,7 +455,7 @@ function PostPage() {
     }
 
     const formatDeadline = (date) => {
-        const deadline = new Date(date)
+        const deadline = date?.toDate ? date.toDate() : new Date(date)
         const now = new Date()
         const diffMs = deadline - now
         const diffDays = Math.floor(diffMs / 86400000)
@@ -451,12 +615,18 @@ function PostPage() {
                             <div className="post-card-actions">
                                 <span className="post-action">
                                     <CommentIcon />
-                                    <span>{post.comments} Comments</span>
+                                    <span>{comments.length || post.comments || 0} Comments</span>
                                 </span>
 
-                                <button className="post-action">
-                                    <ShareIcon />
-                                    <span>Share</span>
+                                <button
+                                    className="post-action"
+                                    onClick={handleShare}
+                                    style={{
+                                        color: shareStatus === 'copied' ? 'var(--color-success)' : undefined
+                                    }}
+                                >
+                                    {shareStatus === 'copied' ? <CheckIcon /> : <ShareIcon />}
+                                    <span>{shareStatus === 'copied' ? 'Copied!' : 'Share'}</span>
                                 </button>
 
                                 <button
@@ -474,14 +644,20 @@ function PostPage() {
                     <div className="card" style={{ marginTop: 'var(--space-md)', padding: 'var(--space-md)' }}>
                         <textarea
                             className="form-input form-textarea"
-                            placeholder="What are your thoughts?"
+                            placeholder={currentUser ? "What are your thoughts?" : "Log in to comment..."}
                             value={commentContent}
                             onChange={(e) => setCommentContent(e.target.value)}
+                            onClick={() => !currentUser && openAuthModal('login')}
                             style={{ marginBottom: 'var(--space-sm)' }}
+                            disabled={!currentUser}
                         />
                         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                            <button className="btn btn-primary">
-                                Comment
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleSubmitComment}
+                                disabled={isSubmitting || !commentContent.trim()}
+                            >
+                                {isSubmitting ? 'Posting...' : 'Comment'}
                             </button>
                         </div>
                     </div>
@@ -490,9 +666,24 @@ function PostPage() {
                     <div className="card" style={{ marginTop: 'var(--space-md)', padding: 'var(--space-md)' }}>
                         <h3 style={{ marginBottom: 'var(--space-md)' }}>Comments</h3>
 
-                        {sampleComments.map(comment => (
-                            <Comment key={comment.id} comment={comment} />
-                        ))}
+                        {isLoadingComments ? (
+                            <div style={{ textAlign: 'center', padding: 'var(--space-xl)', color: 'var(--color-text-secondary)' }}>
+                                Loading comments...
+                            </div>
+                        ) : comments.length > 0 ? (
+                            comments.map(comment => (
+                                <Comment
+                                    key={comment.id}
+                                    comment={comment}
+                                    postId={id}
+                                    onReplyAdded={refreshComments}
+                                />
+                            ))
+                        ) : (
+                            <div style={{ textAlign: 'center', padding: 'var(--space-xl)', color: 'var(--color-text-secondary)' }}>
+                                No comments yet. Be the first to share your thoughts!
+                            </div>
+                        )}
                     </div>
                 </div>
 

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import VoteWidget from './VoteWidget'
 import { useApp } from '../App'
@@ -16,6 +17,12 @@ const ShareIcon = () => (
         <circle cx="18" cy="19" r="3" />
         <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
         <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+    </svg>
+)
+
+const CheckIcon = () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="20 6 9 17 4 12" />
     </svg>
 )
 
@@ -57,11 +64,12 @@ const ExternalLinkIcon = () => (
 function PostCard({ post }) {
     const { bookmarks, toggleBookmark } = useApp()
     const isBookmarked = bookmarks.includes(post.id)
+    const [shareStatus, setShareStatus] = useState(null)
 
-    // Format relative time
+    // Format relative time - handle Firebase Timestamp
     const formatTime = (date) => {
         const now = new Date()
-        const postDate = new Date(date)
+        const postDate = date?.toDate ? date.toDate() : new Date(date)
         const diffMs = now - postDate
         const diffMins = Math.floor(diffMs / 60000)
         const diffHours = Math.floor(diffMs / 3600000)
@@ -73,9 +81,9 @@ function PostCard({ post }) {
         return postDate.toLocaleDateString()
     }
 
-    // Format deadline
+    // Format deadline - handle Firebase Timestamp
     const formatDeadline = (date) => {
-        const deadline = new Date(date)
+        const deadline = date?.toDate ? date.toDate() : new Date(date)
         const now = new Date()
         const diffMs = deadline - now
         const diffDays = Math.floor(diffMs / 86400000)
@@ -118,6 +126,45 @@ function PostCard({ post }) {
         e.preventDefault()
         e.stopPropagation()
         toggleBookmark(post.id)
+    }
+
+    const handleShare = async (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+
+        const url = `${window.location.origin}/post/${post.id}`
+
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: post.title,
+                    url: url
+                })
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    copyToClipboard(url)
+                }
+            }
+        } else {
+            copyToClipboard(url)
+        }
+    }
+
+    const copyToClipboard = async (url) => {
+        try {
+            await navigator.clipboard.writeText(url)
+            setShareStatus('copied')
+            setTimeout(() => setShareStatus(null), 2000)
+        } catch (error) {
+            const textarea = document.createElement('textarea')
+            textarea.value = url
+            document.body.appendChild(textarea)
+            textarea.select()
+            document.execCommand('copy')
+            document.body.removeChild(textarea)
+            setShareStatus('copied')
+            setTimeout(() => setShareStatus(null), 2000)
+        }
     }
 
     return (
@@ -188,9 +235,13 @@ function PostCard({ post }) {
                         <span>{post.comments} Comments</span>
                     </Link>
 
-                    <button className="post-action">
-                        <ShareIcon />
-                        <span>Share</span>
+                    <button
+                        className="post-action"
+                        onClick={handleShare}
+                        style={{ color: shareStatus === 'copied' ? 'var(--color-success)' : undefined }}
+                    >
+                        {shareStatus === 'copied' ? <CheckIcon /> : <ShareIcon />}
+                        <span>{shareStatus === 'copied' ? 'Copied!' : 'Share'}</span>
                     </button>
 
                     <button

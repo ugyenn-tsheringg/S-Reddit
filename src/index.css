@@ -288,6 +288,18 @@ h6 {
   border-radius: var(--radius-lg);
 }
 
+/* Ensure button SVGs are properly sized */
+.btn svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.btn-sm svg {
+  width: 16px;
+  height: 16px;
+}
+
 /* ===== Cards ===== */
 .card {
   background-color: var(--color-bg-card);
